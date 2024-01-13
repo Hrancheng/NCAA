@@ -1,0 +1,184 @@
+---
+title: "NCAA"
+author: "Haoran Cheng"
+date: "2023-12-14"
+output: html_document
+---
+Overview of appendix: This code is designed to test 6 different models to see which one does the best job of predicting who will win the NCAA tournament. Those models differ in whether to incorporate home advantage variable and date interaction term, as well as whether there is penalty term added to the model formula. and then from there we will use cross-validation to compute negative log likelihood loss, hoping to see which model to prefer and then ranking the teams based on the model. Lastly, we want to calculate Michigan’s odds of winning against the teams that they played in the first two rounds of tournament. Multiplication correction with Bonferroni method is performed to control family-wise type I error. Extra part of multicolinearity check on our chosen model is added for paper writing use. 1
+We fitted a B-T model without home advantage variable.
+2
+We fitted penalized version of the B-T model in part 1 with bayesglm().
+3
+For part a, we included an additional home advantage variable-the intercept, and apply both the non- penalized and penalized model fitting method to it.
+For part b, we excluded the intercept, but added another date interaction variable. Similarly, we fitted both non-penalized and penalized version.
+4
+We calculated negative log likelihood loss to our different models with cv.glmnet(). We pick the non- penalized model without intercept but with date interaction to be the best since it has the smallest loss value. 5
+We rank the coefficients of our picked model and get the top 10/bottom 5 team variables correspondingly. 6 We computed the odds of Michigan winning three teams respectively: Delaware.State, St..Francis..PA. and
+Western.Michigan According to formula:
+logit(odd)=log
+Pi>j Pi<j
+eβ
+=log i =β −β .
+eβ i j j
+7
+We applied Bonferroni method to do mulitplicity correction to control type I error of simultaneous hypothesis testing.
+Extra part
+We used vif() function to check whether there is multicollinearity issue within our model.
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(modelr)
+library(nycflights13)
+```
+
+
+```{r}
+##Data paraperation Changing data to fit date to the date variable type
+ncaa_womens <-
+  read.csv("http://stat.lsa.umich.edu/~bbh/s485/data/cbb-womens-2023-03-12.csv")
+ncaa_womens$date <- as.Date(ncaa_womens$date)
+```
+
+```{r}
+opponent <- ncaa_womens[ncaa_womens$Michigan != 0,]
+row_values <- opponent[1, ]
+indices <- which(row_values != 0)
+elements <- row_values[indices]
+name <- colnames(opponent)[indices]
+name
+```
+
+```{r}
+row_values <- opponent[2, ]
+indices <- which(row_values != 0)
+elements <- row_values[indices]
+name <- colnames(opponent)[indices]
+name
+```
+
+```{r}
+row_values <- opponent[3, ]
+indices <- which(row_values != 0)
+elements <- row_values[indices]
+name <- colnames(opponent)[indices]
+name
+```
+
+```{r}
+#2. Fitting a version of the model using a penalized form of logistic regression To fit a penalized version of B-T model without date, home advantaage and Michigan for reference, we use arm::bayesglm():
+ btmod2 <- arm::bayesglm(home_win ~ .-date - Michigan  -1, data = ncaa_womens,
+                        family = binomial)
+```
+
+```{r}
+#3a. Incorporate a model with home team advantage parameter Add intercept to address home advantage:
+btmod3 <- glm(home_win ~  .-date - Michigan, data = ncaa_womens,
+              family = binomial)
+```
+
+```{r}
+ btmod4 <- arm::bayesglm(home_win ~  .-date - Michigan, data = ncaa_womens,
+                        family = binomial)
+```
+
+```{r}
+#3b. Incorporating model interaction of the team’s variables as a function of game date
+#Add another term of date interaction (.-date - Michigan-1)*date to take strength change over the #season into consideration:
+ btmod5 <- glm(home_win ~ .-Michigan - date -1 + (.-date - Michigan-1)*date,
+              data = ncaa_womens, family = binomial)
+
+ btmod6 <- arm::bayesglm(home_win ~ .-Michigan - date -1 +
+                          (.-date - Michigan-1)*date, data = ncaa_womens,
+                        family = binomial)
+```
+
+```{r}
+#4. deciding which model to prefer #change to log-likelihood.
+matrix1 <- model.matrix(btmod1)
+matrix2 <- model.matrix(btmod2)
+matrix3 <- model.matrix(btmod3)
+matrix4 <- model.matrix(btmod4)
+matrix5 <- model.matrix(btmod5)
+matrix6 <- model.matrix(btmod6)
+mod1 <- cv.glmnet(matrix1, ncaa_womens$home_win, alpha=0, nfolds= 15,
+                  object = btmodl1,intercept = FALSE, type.measure = "deviance")
+mod2 <- cv.glmnet(matrix2, ncaa_womens$home_win, alpha=0, nfolds= 15,
+                  object = btmodl2,intercept = FALSE, type.measure = "deviance")
+mod3 <- cv.glmnet(matrix3, ncaa_womens$home_win, alpha=0, nfolds= 15,
+                  object = btmodl3,intercept = FALSE, type.measure = "deviance")
+mod4 <- cv.glmnet(matrix4, ncaa_womens$home_win, alpha=0, nfolds= 15,
+                  object = btmodl4,intercept = FALSE, type.measure = "deviance")
+mod5 <- cv.glmnet(matrix5, ncaa_womens$home_win, alpha=0, nfolds= 15,
+                  object = btmodl5,intercept = FALSE, type.measure = "deviance")
+mod6 <- cv.glmnet(matrix6, ncaa_womens$home_win, alpha=0, nfolds= 15,
+                  object = btmodl6,intercept = FALSE, type.measure = "deviance")
+
+```
+
+```{r}
+l <- sort(coef(btmod4), decreasing = TRUE)
+m <- sort(coef(btmod4), decreasing = FALSE)
+l[1]
+```
+
+```{r}
+#michigan_odds <- summary(btmod4)$coefficients["Michigan", 1]
+D_odds <- summary(btmod4)$coefficients["Delaware.State", 1]
+S_odds <- summary(btmod4)$coefficients["St..Francis..PA.", 1]
+W_odds <- summary(btmod4)$coefficients["Western.Michigan", 1]
+exp(0 -D_odds)
+exp(0 - S_odds)
+exp(0 - W_odds)
+```
+
+```{r}
+#7 part a:
+D_se <- summary(btmod4)$coefficients["Delaware.State", 2]
+S_se <- summary(btmod4)$coefficients["St..Francis..PA.", 2]
+W_se <- summary(btmod4)$coefficients["Western.Michigan", 2]
+D_se
+```
+
+```{r}
+S_se
+```
+
+```{r}
+W_se
+```
+
+```{r}
+z_score <- D_odds / D_se
+p_value1 <-  (1 - pnorm(abs(z_score)))
+p_value1
+```
+
+```{r}
+ z_score <- S_odds / S_se
+p_value2 <-  (1 - pnorm(abs(z_score)))
+p_value2
+```
+
+```{r}
+z_score <- W_odds / W_se
+p_value3 <-  (1 - pnorm(abs(z_score)))
+p_value3
+```
+
+```{r}
+p_values <- c(p_value1, p_value2, p_value3)
+adjusted_p <- p.adjust(p_values, method = "bonferroni")
+adjusted_p
+```
+
+```{r}
+vif(btmod4)
+```
+
+
